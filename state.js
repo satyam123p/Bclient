@@ -28,6 +28,7 @@ export const setWsConnection = (wsConnection) => {
 export const setRoomName = (roomName) => {
     setState({roomName});
 }
+
 // set the other user's id
 export const setOtherUserId = (otherUserId) => {
     setState({otherUserId})
@@ -44,30 +45,4 @@ export const resetState = () => {
 // getter for our state object
 export const getState = () => {
     return state;
-};
-export const type = {
-    ROOM_DESTROY: {
-        RESPONSE_FAILURE: "DESTROY_ROOM_RESPONSE_FAILURE",
-        RESPONSE_SUCCESS: "DESTORY_ROOM_RESPONSE_SUCCESS", 
-    },
-    ROOM_JOIN: {
-        RESPONSE_FAILURE: "JOIN_ROOM_RESPONSE_FAILURE",
-        RESPONSE_SUCCESS: "JOIN_ROOM_RESPONSE_SUCCESS",
-        REQUEST: "JOIN_ROOM_REQUEST",
-        NOTIFY: "JOIN_ROOM_NOTIFY" 
-    },
-    ROOM_EXIT: {
-        REQUEST: "EXIT_ROOM_REQUEST",
-        NOTIFY: "EXIT_ROOM_NOTIFY" 
-    },
-    WEB_RTC: {
-        OFFER: "OFFER",
-        ANSWER: "ANSWER",
-        ICE_CANDIDATES: "ICE_CANDIDATES"
-    }
-};
-
-export const labels = {
-    NORMAL_SERVER_PROCESS: "NORMAL_SERVER_PROCESS",
-    WEBRTC_PROCESS: "WEBRTC_PROCESS"
 };
