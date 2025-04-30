@@ -1,10 +1,9 @@
 import * as uiUtils from "./uiUtils.js";
 import * as ws from "./ws.js";
-let pc; // define a global local peer connection object that contains everything we need to establish a WebRTC connection
-let dataChannel; // we will set this up when we create a peer connection
-const iceCandidatesGenerated = []; // for learning purposes, we will store all ice candidates generated inside of an array
+let pc;
+let dataChannel;
+const iceCandidatesGenerated = [];
 const iceCandidatesReceivedBuffer = [];
-// step 1 (md file reference)
 const webRTCConfiguratons = {
     iceServers: [
         {
@@ -12,95 +11,117 @@ const webRTCConfiguratons = {
                 "stun:stun.l.google.com:19302",
                 "stun:stun2.l.google.com:19302",
                 "stun:stun3.l.google.com:19302",
+                "stun:stun4.l.google.com:19302",
             ]
         }
     ]
-};
-export async function startWebRTCProces() {
-    let offer; 
-    // create a peer connection object
+}
+export function startWebRTCProcess() {
+    let offer;
+
     createPeerConnectionObject();
-    // create dataChannel
     createDataChannel(true);
-    // creating offer
-    offer = await pc.createOffer();
-    // adding offer to localDescription
-    await pc.setLocalDescription(offer); 
-    // sending offer to signaling server
-    ws.sendOffer(offer);
-};
-// create a users local peer connection object by invoking the RTCPeerConnection object
+
+    pc.createOffer().then(function(createdOffer) {
+        offer = createdOffer;
+        return pc.setLocalDescription(offer);
+    }).then(function() {
+        ws.sendOffer(offer);
+    }).catch(function(error) {
+        console.error('Error occurred during WebRTC process:', error);
+    });
+}
 function createPeerConnectionObject() {
-    pc = new RTCPeerConnection(webRTCConfiguratons); // created a pc object that will handle the entire WebRTC session for this peer
-    // ### register event listeners
-    // #1. listen for WebRTC connection state change event (goal is "connected")
+    pc = new RTCPeerConnection(webRTCConfiguratons);
     pc.addEventListener("connectionstatechange", () => {
         console.log("connection state changed to: ", pc.connectionState); 
         if(pc.connectionState === "connected") {
             alert("YOU HAVE DONE IT! A WEBRTC CONNECTION HAS BEEN MADE BETWEEN YOU AND THE OTHER PEER");
         }
-    });
-    // #2. listen for change in the signaling state
+    })
     pc.addEventListener("signalingstatechange", () => {
-       console.log(`Signaling state changed to: ${pc.signalingState}`);
-    });
-    // #3. listen for ice candidate generation
+        console.log(`Signaling state changed to: ${pc.signalingState}`);
+    })
     pc.addEventListener("icecandidate", (e) => {
         if(e.candidate) {
             console.log("ICE:", e.candidate);
             iceCandidatesGenerated.push(e.candidate);
         }
-    });
+    })
 }
-// create a data channel
 function createDataChannel(isOfferor) {
-    // only need to create a data channel once, when an offer is established
-    // to mimic UDP type transport on our data channel, set the 'ordered' property to false, and the maxRetransmits to 0
-    const dataChannelOptions = {
-        ordered: false, 
-        maxRetransmits: 0
-    };
-    dataChannel = pc.createDataChannel("top-secret-chat-room", dataChannelOptions);
-    // add event listeners
-    registerDataChannelEventListeners();
+    if (isOfferor) {
+        const dataChannelOptions = {
+            ordered: false, 
+            maxRetransmits: 0
+        };
+        dataChannel = pc.createDataChannel("top-secret-chat-room", dataChannelOptions);
+        registerDataChannelEventListeners();
+    } 
+    else {
+        pc.ondatachannel = (e) => {
+            console.log("The ondatachannel event was emitted for PEER2. Here is the event object: ", e);
+            dataChannel = e.channel;
+            registerDataChannelEventListeners();
+        }
+    }
 }
 function registerDataChannelEventListeners() {
     dataChannel.addEventListener("message", (e) => {
         console.log("message has been received from a Data Channel");
-        // first, we need to extract the actual data from the Data Channel
         const msg = e.data; 
         uiUtils.addIncomingMessageToUi(msg);
     });
     dataChannel.addEventListener("close", (e) => {
-        // will fire for all users that are listening on this data channel
         console.log("The 'close' event was fired on your data channel object");
     });
-    dataChannel.addEventListener("open", (e) => {
-        // this will fire when webrtc connection is established. 
+    dataChannel.addEventListener("open", (e) => { 
         console.log("Data Channel has been opened. You are now ready to send/receive messsages over your Data Channel");
     });
-};
-export async function handleAnswer(data) {
-    // send ice candidates
+}
+export async function handleOffer(data) {
+    let answer; 
+    createPeerConnectionObject(); 
+    createDataChannel(false);
+    await pc.setRemoteDescription(data.offer);
+    answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    ws.sendAnswer(answer);
     ws.sendIceCandidates(iceCandidatesGenerated);
-    // set remote description
+}
+
+export async function handleAnswer(data) {
+    ws.sendIceCandidates(iceCandidatesGenerated);
     await pc.setRemoteDescription(data.answer);
     for (const candidate of iceCandidatesReceivedBuffer) {
         await pc.addIceCandidate(candidate);
     }; 
     iceCandidatesReceivedBuffer.splice(0, iceCandidatesReceivedBuffer.length);
-};
-// handle ice candidates received from the signaling server
+}
 export function handleIceCandidates(data) {
-    data.candidatesArray.forEach(candidate => {
-        iceCandidatesReceivedBuffer.push(candidate);
-    });
+    if(pc.remoteDescription) {
+        try {
+            data.candidatesArray.forEach(candidate => {
+                pc.addIceCandidate(candidate);
+            });
+        } 
+        catch (error) {
+            console.log("Error trying to add an ice candidate to the pc object", error);
+        }
+    } else {
+        data.candidatesArray.forEach(candidate => {
+            iceCandidatesReceivedBuffer.push(candidate);
+        })
+    }   
+}
+export function sendMessageUsingDataChannel(message) {
+    dataChannel.send(message);
 }
 export function closePeerConnection() {
     if(pc) {
-        pc.close(); // calling this will automatically close all data channels
-        pc = null; // ensure we free up memory by setting pc object to null
+        pc.close();
+        pc = null;
         dataChannel = null;
         console.log("You have closed your peer connection by calling the 'close()' method");
     }
-};
+}
